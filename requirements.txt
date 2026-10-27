@@ -1,0 +1,8 @@
+numpy
+scipy
+matplotlib
+pillow
+ipywidgets
+ipympl
+ipykernel
+pytest

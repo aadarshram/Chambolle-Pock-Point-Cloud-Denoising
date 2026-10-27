@@ -1,0 +1,6 @@
+n=8000 noise_std=0.35 k=8 seed=0
+clean: color_mse=0.000000e+00
+noisy: color_mse=7.042921e-02
+lam=80: color_mse=5.039402e-02
+lam=12: color_mse=2.091878e-02
+lam=1: color_mse=7.013201e-02
