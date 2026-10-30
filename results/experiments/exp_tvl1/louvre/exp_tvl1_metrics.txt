@@ -1,0 +1,4 @@
+image=louvre.png shape=375x500 fraction=0.25 seed=0
+noisy: mse=8.009182e-02
+tvl1 lam=1.5: mse=4.151745e-03
+rof lam=8: mse=2.350146e-02
