@@ -6,6 +6,9 @@ with the isotropic seminorm (7) at p = 2. The iteration is their equation (20),
 which is Algorithm 1 of Chambolle and Pock (2011). Each coordinate is a scalar
 signal. The neighborhood is symmetric. The default edge weight is 1, and
 weight="distance" uses a Gaussian of the Euclidean edge length.
+
+data="l1" replaces the quadratic data term of (14) with lam * ||u - f||_1,
+the TV-L1 model of Chambolle and Pock (2011). Only the primal prox changes.
 """
 
 import numpy as np
@@ -163,10 +166,21 @@ def operator_norm_bound(sources, targets, weights, n_vertices):
 
 
 def chambolle_pock(
-    signal, sources, targets, weights, lam, n_iter=5000, theta=1.0, tol=RELATIVE_CHANGE_TOL
+    signal,
+    sources,
+    targets,
+    weights,
+    lam,
+    n_iter=5000,
+    theta=1.0,
+    tol=RELATIVE_CHANGE_TOL,
+    data="l2",
 ):
     """
     Minimize equation (14) by the iteration (20), one scalar channel at a time.
+
+    `data` is "l2" for the quadratic data term of (14), or "l1" for the
+    TV-L1 data term lam * ||u - f||_1.
     """
     observed, squeeze = _as_signal(signal)
     sources, targets, weights = _as_edges(sources, targets, weights, observed.shape[0])
@@ -174,17 +188,18 @@ def chambolle_pock(
     n_iter = _as_positive_int(n_iter, "n_iter")
     theta = _as_theta(theta)
     tol = _as_positive(tol, "tol")
+    data = _as_data(data)
     restored = np.empty_like(observed)
     for channel in range(observed.shape[1]):
         restored[:, channel] = _solve_scalar(
-            observed[:, channel], sources, targets, weights, lam, n_iter, theta, tol
+            observed[:, channel], sources, targets, weights, lam, n_iter, theta, tol, data
         )
     if squeeze:
         return restored[:, 0]
     return restored
 
 
-def _solve_scalar(observed, sources, targets, weights, lam, n_iter, theta, tol):
+def _solve_scalar(observed, sources, targets, weights, lam, n_iter, theta, tol, data):
     """
     Run equation (20) for one scalar channel.
     """
@@ -202,19 +217,24 @@ def _solve_scalar(observed, sources, targets, weights, lam, n_iter, theta, tol):
     dual = np.zeros(sources.shape[0])
     for _ in range(n_iter):
         # Ascend the dual variable and project onto each vertex ball of radius 1.
+        previous_dual = dual
         dual = dual + sigma * apply_gradient(extrapolated, sources, targets, weights)
         dual *= _unit_ball_scale(dual, sources, n_vertices)
-        # Descend the primal variable with the quadratic prox from equation (20).
+        # Descend the primal variable with the prox of the data term.
         adjoint = apply_adjoint(dual, sources, targets, weights, n_vertices)
         previous = primal
-        primal = (primal - tau * adjoint + tau * lam * observed) / (1.0 + tau * lam)
-        # Extrapolate and stop on a small relative change.
+        primal = _data_prox(primal - tau * adjoint, observed, tau * lam, data)
         extrapolated = primal + theta * (primal - previous)
-        change = np.linalg.norm(primal - previous)
-        scale = np.linalg.norm(previous)
-        if scale == 0.0 or change / scale < tol:
+        # Stop once both variables settle. The l1 prox can hold the primal
+        # exactly at the data while the dual is still moving.
+        if _has_settled(primal, previous, tol) and _has_settled(dual, previous_dual, tol):
             break
     return primal
+
+
+def _has_settled(current, previous, tol):
+    # Relative change. A variable that stays at 0 has settled.
+    return np.linalg.norm(current - previous) <= tol * np.linalg.norm(previous)
 
 
 def _unit_ball_scale(dual, sources, n_vertices):
@@ -225,6 +245,17 @@ def _unit_ball_scale(dual, sources, n_vertices):
     outside = norms > 1.0
     scale[outside] = 1.0 / norms[outside]
     return scale[sources]
+
+
+def _data_prox(point, observed, step, data):
+    """
+    Prox of step * (data term) at `point`, as in equation (20).
+    """
+    if data == "l2":
+        return (point + step * observed) / (1.0 + step)
+    # Soft-threshold the residual: the prox of step * |u - f| per vertex.
+    residual = point - observed
+    return observed + np.sign(residual) * np.maximum(np.abs(residual) - step, 0.0)
 
 
 #--------------------------------------------------------------------------------
@@ -315,3 +346,9 @@ def _as_theta(value):
     if not np.isfinite(number) or number < 0.0 or number > 1.0:
         raise ValueError("theta must lie in [0, 1]")
     return number
+
+
+def _as_data(value):
+    if not isinstance(value, str) or value.strip().lower() not in ("l2", "l1"):
+        raise ValueError("data must be 'l2' or 'l1'")
+    return value.strip().lower()

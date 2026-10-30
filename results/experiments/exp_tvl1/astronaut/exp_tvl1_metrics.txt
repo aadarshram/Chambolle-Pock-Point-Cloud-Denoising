@@ -1,0 +1,4 @@
+image=astronaut.png shape=256x256 fraction=0.25 seed=0
+noisy: mse=8.393866e-02
+tvl1 lam=1.3: mse=2.340300e-03
+rof lam=4: mse=1.409456e-02
