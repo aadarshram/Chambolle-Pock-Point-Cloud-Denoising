@@ -19,6 +19,7 @@ The relevant files can be found as follows:
 6. `experiments/exp_tvl1/run_exp_tvl1.py`: The entry point of the salt-and-pepper experiment.
 7. `models/experiments/exp_tvl1/`: The test images for the salt-and-pepper experiment: the Louvre image from Figure 4 of Chambolle and Pock, and the public-domain astronaut image from scikit-image.
 8. `notebooks/chambolle_pock_color_denoising.ipynb`: The notebook demonstrating the denoising process and the effects of the parameters on the color experiment.
+9. `notebooks/chambolle_pock_tvl1_denoising.ipynb`: The notebook explaining the TV-L1 model and comparing it with ROF on salt-and-pepper noise, with interactive parameters.
 
 
 
