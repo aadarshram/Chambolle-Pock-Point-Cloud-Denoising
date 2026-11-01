@@ -1,0 +1,4 @@
+image=synthetic shape=128x128 fraction=0.25 seed=0
+noisy: mse=8.001038e-02
+tvl1 lam=1: mse=5.003125e-04
+rof lam=3: mse=8.828283e-03
