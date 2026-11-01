@@ -1,6 +1,6 @@
 # exp_color
 
-Denoise the color on a point cloud with the graph ROF model.
+Denoise the color on a point cloud with ROF and with TV-L1.
 
 ## Setup
 
@@ -9,7 +9,7 @@ We consider the point cloud model of Spot, the public-domain cow released by Kee
 Sample 8000 points uniformly by area on the triangulated surface, and read each point's color from the texture.
 
 Add independent Gaussian noise of standard deviation 0.35 to each color channel, then clip to \([0, 1]\).
-Denoise that same noisy color three times.
+Denoise that noisy color twice. ROF uses \(\lambda = 12\). TV-L1 uses \(\lambda = 4\), because the 2D experiment sets \(\lambda_{\mathrm{ROF}} = 3\lambda_{\mathrm{TV\text{-}L1}}\).
 
 ## Usage
 

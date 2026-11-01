@@ -2,26 +2,27 @@
 
 Extends the Chambolle-Pock method for 2D image denoising to 3D point clouds inspired from the work of Tenbrinck, Lozes, and Elmoataz (SSVM 2015). The implementation is demonstrated on the Spot dataset ([https://www.cs.cmu.edu/~kmcrane/Projects/ModelRepository/](https://www.cs.cmu.edu/~kmcrane/Projects/ModelRepository/)).
 
-Example of point cloud denoising on Spot (Keenan Crane, CMU):
+Example of point cloud denoising (gaussian noise) on Spot (Keenan Crane, CMU):
 ![Spot](assets/spot_color_denoising.png)
 
 The same solver also runs the TV-L1 image denoising model of Chambolle and Pock on a pixel grid. See [docs/experiments/exp_tvl1.md](docs/experiments/exp_tvl1.md).
+
+Example of reproduced 2D denoising result (salt-and-pepper noise) from Chambolle and Pock (2011) on the Louvre image (Figure 4(a)):
+![Louvre](assets/2d_louvre_denoising.png)
 
 ## Layout
 
 The relevant files can be found as follows:
 
-1. `src/cp_pointcloud/denoise.py`: The implementation of the Chambolle-Pock algorithm for point cloud denoising, with a quadratic (`data="l2"`) or TV-L1 (`data="l1"`) data term.
-2. `src/cp_pointcloud/tvl1_denoise.py`: The pixel grid and TV-L1 denoising of grayscale images.
-3. `experiments/exp_color/color.py`: The implementation of the color experiment.
-4. `experiments/exp_color/run_exp_color.py`: The entry point of the color experiment.
-5. `models/experiments/exp_color/spot.zip`: The dataset for the color experiment.
-6. `experiments/exp_tvl1/run_exp_tvl1.py`: The entry point of the salt-and-pepper experiment.
-7. `models/experiments/exp_tvl1/`: The test images for the salt-and-pepper experiment: the Louvre image from Figure 4 of Chambolle and Pock, and the public-domain astronaut image from scikit-image.
-8. `notebooks/chambolle_pock_color_denoising.ipynb`: The notebook demonstrating the denoising process and the effects of the parameters on the color experiment.
-9. `notebooks/chambolle_pock_tvl1_denoising.ipynb`: The notebook explaining the TV-L1 model and comparing it with ROF on salt-and-pepper noise, with interactive parameters.
-
-
+1. `src/cp_image/denoise.py`: The implementation of the Chambolle-Pock algorithm for 2D image denoising, with a quadratic (`data="l2"`) or TV-L1 (`data="l1"`) data term.
+2. `src/cp_pointcloud/denoise.py`: The implementation of the Chambolle-Pock algorithm for point cloud denoising, with a quadratic (`data="l2"`) or TV-L1 (`data="l1"`) data term.
+3. `src/cp_solver/algorithm.py`: The implementation of the Chambolle-Pock algorithm.    
+4. `src/cp_solver/prox.py`: The implementation of the proximal maps for the quadratic and TV-L1 data terms.
+5. `experiments/exp_2d/denoise.py`: The implementation of the 2D denoising experiment.
+6. `experiments/exp_2d/run_exp_2d.py`: The entry point of the 2D denoising experiment.
+7. `models/experiments/exp_2d/louvre.png`: The Louvre image from Figure 4(a) of Chambolle and Pock (2011).
+8. `models/experiments/exp_2d/astronaut.png`: The astronaut image from scikit-image.
+9. `notebooks/chambolle_pock_2D_denoising.ipynb`: The notebook demonstrating the denoising process and the effects of the parameters on the 2D denoising experiment.
 
 ## Usage
 
@@ -32,8 +33,6 @@ pip install -r requirements.txt
 pip install -e .
 pytest
 ```
-
-
 
 ## References
 

@@ -1,13 +1,27 @@
 """
-Color noise and graph ROF denoising of a color stored at each point.
+Color noise and graph denoising of a color stored at each point.
+
+The data term is ROF (data="l2") or TV-L1 (data="l1"). The 2D experiment uses
+λ_ROF = 3 λ_TV-L1, and tvl1_lambda keeps that ratio.
 """
 
 import numpy as np
 
-from cp_pointcloud import chambolle_pock, knn_graph
+from cp_pointcloud import denoise_graph_signal, knn_graph
 from cp_pointcloud.denoise import RELATIVE_CHANGE_TOL
 
+# exp_2d defaults: --lam-l2 3 and --lam-l1 1.
+ROF_PER_TVL1 = 3.0
+
 #--------------------------------------------------------------------------------
+
+
+def tvl1_lambda(lam_rof):
+    """
+    TV-L1 data weight paired with an ROF weight at the exp_2d ratio.
+    """
+    lam_rof = _as_nonnegative(lam_rof, "lam")
+    return lam_rof / ROF_PER_TVL1
 
 
 def add_color_noise(colors, noise_std, rng):
@@ -33,21 +47,29 @@ def color_mse(restored, clean):
 
 
 def denoise_color(
-    points, colors, k, lam, n_iter=5000, tol=RELATIVE_CHANGE_TOL, weight="equal", bandwidth=None
+    points,
+    colors,
+    k,
+    lam,
+    n_iter=5000,
+    tol=RELATIVE_CHANGE_TOL,
+    weight="equal",
+    bandwidth=None,
+    data="l2",
 ):
     """
     Denoise the color channels on the k-nearest-neighbor graph of `points`.
-    
-    `lam` multiplies the data term of each color channel. `weight` is
-    "equal" or "distance", as in `knn_graph`.
+
+    `lam` multiplies the data term of each color channel. `data` is "l2" for
+    ROF or "l1" for TV-L1. `weight` is "equal" or "distance", as in `knn_graph`.
     """
     cloud = _as_points(points)
     signal = _as_colors(colors)
     if cloud.shape[0] != signal.shape[0]:
         raise ValueError("points and colors must have the same number of rows")
     sources, targets, weights = knn_graph(cloud, k, weight=weight, bandwidth=bandwidth)
-    return chambolle_pock(
-        signal, sources, targets, weights, lam, n_iter=n_iter, tol=tol
+    return denoise_graph_signal(
+        signal, sources, targets, weights, lam, n_iter=n_iter, tol=tol, data=data
     )
 
 

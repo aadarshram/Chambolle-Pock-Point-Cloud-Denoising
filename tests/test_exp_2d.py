@@ -1,15 +1,15 @@
-"""Checks for the salt-and-pepper experiment helpers."""
+"""Checks for the image noise helpers."""
 
 import numpy as np
 import pytest
 from PIL import Image
 
-from experiments.exp_tvl1.image import add_salt_and_pepper, image_mse, read_grayscale, synthetic_image
+from experiments.exp_2d.image import add_noise, image_mse, read_grayscale, synthetic_image
 
 
 def test_salt_and_pepper_hits_the_fraction_with_only_0_and_1():
     clean = np.full((100, 100), 0.4)
-    noisy = add_salt_and_pepper(clean, fraction=0.25, rng=np.random.default_rng(0))
+    noisy = add_noise(clean, "salt-and-pepper", np.random.default_rng(0), fraction=0.25)
     hit = noisy != clean
     assert hit.mean() == pytest.approx(0.25, abs=0.02)
     assert set(np.unique(noisy[hit]).tolist()) == {0.0, 1.0}
@@ -19,14 +19,29 @@ def test_salt_and_pepper_hits_the_fraction_with_only_0_and_1():
 
 def test_salt_and_pepper_is_reproducible_from_the_seed():
     clean = synthetic_image(32)
-    first = add_salt_and_pepper(clean, 0.3, np.random.default_rng(7))
-    second = add_salt_and_pepper(clean, 0.3, np.random.default_rng(7))
+    first = add_noise(clean, "salt-and-pepper", np.random.default_rng(7), fraction=0.3)
+    second = add_noise(clean, "salt-and-pepper", np.random.default_rng(7), fraction=0.3)
     assert np.array_equal(first, second)
+
+
+def test_gaussian_noise_matches_the_scale_and_stays_in_range():
+    clean = np.full((80, 80), 0.5)
+    noisy = add_noise(clean, "gaussian", np.random.default_rng(0), std=0.02)
+    assert noisy.shape == clean.shape
+    assert noisy.min() >= 0.0 and noisy.max() <= 1.0
+    assert noisy.mean() == pytest.approx(0.5, abs=0.01)
+    assert np.std(noisy - clean) == pytest.approx(0.02, abs=0.005)
+
+
+def test_zero_gaussian_std_leaves_the_image():
+    clean = synthetic_image(16)
+    noisy = add_noise(clean, "gaussian", np.random.default_rng(0), std=0.0)
+    assert np.array_equal(noisy, clean)
 
 
 def test_zero_fraction_leaves_the_image_alone():
     clean = synthetic_image(16)
-    noisy = add_salt_and_pepper(clean, 0.0, np.random.default_rng(0))
+    noisy = add_noise(clean, "salt-and-pepper", np.random.default_rng(0), fraction=0.0)
     assert np.array_equal(noisy, clean)
 
 
@@ -52,9 +67,11 @@ def test_read_grayscale_scales_to_unit_range_and_shrinks(tmp_path):
 @pytest.mark.parametrize(
     "call",
     [
-        lambda: add_salt_and_pepper(np.zeros((4, 4)), fraction=1.5, rng=np.random.default_rng(0)),
-        lambda: add_salt_and_pepper(np.zeros((4, 4)), fraction=0.1, rng=0),
-        lambda: add_salt_and_pepper(np.zeros(4), fraction=0.1, rng=np.random.default_rng(0)),
+        lambda: add_noise(np.zeros((4, 4)), "poisson", np.random.default_rng(0)),
+        lambda: add_noise(np.zeros((4, 4)), "gaussian", np.random.default_rng(0), std=-0.1),
+        lambda: add_noise(np.zeros((4, 4)), "salt-and-pepper", np.random.default_rng(0), fraction=1.5),
+        lambda: add_noise(np.zeros((4, 4)), "salt-and-pepper", 0, fraction=0.1),
+        lambda: add_noise(np.zeros(4), "salt-and-pepper", np.random.default_rng(0), fraction=0.1),
         lambda: image_mse(np.zeros((2, 2)), np.zeros((2, 3))),
         lambda: synthetic_image(0),
     ],

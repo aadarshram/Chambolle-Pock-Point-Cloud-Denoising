@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Run exp_tvl1: remove salt-and-pepper noise from an image with TV-L1, and
-compare it with ROF.
+Run the 2D experiment: remove salt-and-pepper noise from an image with TV-L1,
+and compare it with ROF.
 """
 
 import argparse
@@ -10,13 +10,13 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from cp_pointcloud import denoise_image
-from cp_pointcloud.denoise import RELATIVE_CHANGE_TOL
-from experiments.exp_tvl1.figure import make_comparison_figure
-from experiments.exp_tvl1.image import add_salt_and_pepper, image_mse, read_grayscale, synthetic_image
+from cp_image import denoise_image
+from cp_solver import RELATIVE_CHANGE_TOL
+from experiments.exp_2d.figure import make_comparison_figure
+from experiments.exp_2d.image import add_noise, image_mse, read_grayscale, synthetic_image
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT = ROOT / "results" / "experiments" / "exp_tvl1" / "exp_tvl1_comparison.png"
+DEFAULT_OUTPUT = ROOT / "results" / "experiments" / "exp_2d" / "exp_2d_comparison.png"
 
 
 def main():
@@ -41,7 +41,7 @@ def main():
     else:
         clean = read_grayscale(args.image, args.size)
     rng = np.random.default_rng(args.seed)
-    noisy = add_salt_and_pepper(clean, args.fraction, rng)
+    noisy = add_noise(clean, "salt-and-pepper", rng, fraction=args.fraction)
     restored = {}
     for data, lam in (("l1", args.lam_l1), ("l2", args.lam_l2)):
         print(f"denoising data={data} lam={lam:g}", flush=True)
@@ -54,7 +54,7 @@ def main():
     args.output.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(args.output, dpi=150, bbox_inches="tight")
     metrics = _metrics_text(clean, noisy, restored, args)
-    args.output.with_name("exp_tvl1_metrics.txt").write_text(metrics)
+    args.output.with_name("exp_2d_metrics.txt").write_text(metrics)
     print(metrics, end="", flush=True)
     print(f"saved {args.output}", flush=True)
     if not args.no_show:

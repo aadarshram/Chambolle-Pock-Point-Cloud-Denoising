@@ -5,8 +5,14 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from cp_pointcloud import chambolle_pock, knn_graph
-from experiments.exp_color.color import add_color_noise, color_mse, denoise_color
+from cp_pointcloud import denoise_graph_signal, knn_graph
+from experiments.exp_color.color import (
+    ROF_PER_TVL1,
+    add_color_noise,
+    color_mse,
+    denoise_color,
+    tvl1_lambda,
+)
 from experiments.exp_color.mesh import sample_textured_mesh
 
 
@@ -28,6 +34,24 @@ def test_samples_lie_in_the_triangle_and_take_its_color():
     assert np.all(points[:, 0] + points[:, 1] <= 1.0 + 1e-8)
     assert colors[:, 0] == pytest.approx(np.ones(80))
     assert colors[:, 1] == pytest.approx(np.zeros(80))
+
+
+def test_tvl1_lambda_uses_the_2d_ratio():
+    assert ROF_PER_TVL1 == 3.0
+    assert tvl1_lambda(12.0) == pytest.approx(4.0)
+
+
+def test_l1_color_uses_the_shared_solver():
+    rng = np.random.default_rng(3)
+    points = rng.random((24, 3))
+    noisy = rng.random((24, 3))
+    restored = denoise_color(points, noisy, k=4, lam=4.0, data="l1", n_iter=30, tol=1e-8)
+    sources, targets, weights = knn_graph(points, k=4)
+    wired = denoise_graph_signal(
+        noisy, sources, targets, weights, lam=4.0, data="l1", n_iter=30, tol=1e-8
+    )
+    assert restored.shape == noisy.shape
+    assert restored == pytest.approx(wired)
 
 
 def test_color_noise_stays_in_range_and_denoise_lowers_the_error():
@@ -59,7 +83,7 @@ def test_distance_weight_keeps_separated_colors():
     equal = denoise_color(points, noisy, weight="equal", **kwargs)
     distant = denoise_color(points, noisy, weight="distance", **kwargs)
     sources, targets, weights = knn_graph(points, k=30, weight="distance")
-    wired = chambolle_pock(noisy, sources, targets, weights, lam=2.0, n_iter=400, tol=1e-8)
+    wired = denoise_graph_signal(noisy, sources, targets, weights, lam=2.0, n_iter=400, tol=1e-8)
     assert distant == pytest.approx(wired, abs=1e-8)
     assert _cluster_gap(distant) > _cluster_gap(equal) + 0.2
     assert distant.mean(axis=0) == pytest.approx(noisy.mean(axis=0), abs=1e-5)
@@ -81,6 +105,9 @@ def test_distance_weight_keeps_separated_colors():
         lambda: denoise_color(np.zeros((5, 3)), np.zeros((4, 3)), k=2, lam=1.0, n_iter=2),
         lambda: denoise_color(
             np.zeros((5, 3)), np.zeros((5, 3)), k=2, lam=1.0, n_iter=2, weight="patch"
+        ),
+        lambda: denoise_color(
+            np.zeros((5, 3)), np.zeros((5, 3)), k=2, lam=1.0, n_iter=2, data="l3"
         ),
         lambda: color_mse(np.zeros((4, 3)), np.zeros((4, 2))),
     ],

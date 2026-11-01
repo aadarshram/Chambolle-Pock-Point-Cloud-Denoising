@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from cp_pointcloud import chambolle_pock, denoise_point_cloud, knn_graph
+from cp_pointcloud import denoise_graph_signal, denoise_point_cloud, knn_graph
 from cp_pointcloud.denoise import apply_adjoint, apply_gradient, operator_norm_bound, total_variation
 
 
@@ -82,7 +82,7 @@ def test_operator_norm_bound_covers_power_iteration():
 def test_two_point_jump_matches_stationarity():
     signal = np.array([[0.0], [1.0]])
     sources, targets, weights = _path_edges(2)
-    restored = chambolle_pock(
+    restored = denoise_graph_signal(
         signal, sources, targets, weights, lam=8.0, n_iter=5000, tol=1e-10
     )
     assert restored == pytest.approx(np.array([[0.25], [0.75]]), abs=1e-5)
@@ -94,7 +94,7 @@ def test_mean_is_preserved_and_step_mse_drops():
     clean = np.concatenate([np.zeros(20), np.ones(20)])[:, None]
     noisy = clean + rng.normal(scale=0.2, size=clean.shape)
     sources, targets, weights = _path_edges(len(clean))
-    restored = chambolle_pock(
+    restored = denoise_graph_signal(
         noisy, sources, targets, weights, lam=8.0, n_iter=8000, tol=1e-8
     )
     assert restored.mean() == pytest.approx(noisy.mean(), abs=1e-8)
@@ -110,7 +110,7 @@ def test_small_lambda_flattens_a_connected_signal():
     rng = np.random.default_rng(3)
     signal = rng.normal(size=(30, 1))
     sources, targets, weights = _path_edges(len(signal))
-    restored = chambolle_pock(
+    restored = denoise_graph_signal(
         signal, sources, targets, weights, lam=1e-2, n_iter=20000, tol=1e-8
     )
     assert restored.mean() == pytest.approx(signal.mean(), abs=1e-6)
@@ -121,7 +121,7 @@ def test_large_lambda_stays_near_the_input():
     rng = np.random.default_rng(4)
     signal = rng.normal(size=(30, 1))
     sources, targets, weights = _path_edges(len(signal))
-    restored = chambolle_pock(
+    restored = denoise_graph_signal(
         signal, sources, targets, weights, lam=1e4, n_iter=2000, tol=1e-10
     )
     assert restored == pytest.approx(signal, abs=1e-3)
@@ -188,7 +188,7 @@ def test_point_cloud_runs_each_coordinate_separately():
     restored = denoise_point_cloud(points, k=4, lam=2.0, n_iter=2000, tol=1e-8)
     sources, targets, weights = knn_graph(points, k=4)
     separate = [
-        chambolle_pock(
+        denoise_graph_signal(
             points[:, channel : channel + 1],
             sources,
             targets,

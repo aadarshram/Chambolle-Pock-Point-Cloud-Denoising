@@ -1,6 +1,6 @@
-# Test images for exp_tvl1
+# Test images for exp_2d
 
-The run of exp_tvl1 adds the salt-and-pepper noise itself, so both images are clean.
+The 2D run adds the salt-and-pepper noise itself, so both images are clean.
 
 ## Louvre
 

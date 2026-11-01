@@ -1,5 +1,5 @@
 """
-Test images, salt-and-pepper noise, and the image error for exp_tvl1.
+Test images, Gaussian and salt-and-pepper noise, and the image error for exp_2d.
 """
 
 import numpy as np
@@ -37,14 +37,22 @@ def read_grayscale(path, max_side):
         return np.asarray(gray, dtype=float) / 255.0
 
 
-def add_salt_and_pepper(image, fraction, rng):
+def add_noise(image, kind, rng, std=0.1, fraction=0.25):
     """
-    Replace each pixel, with probability `fraction`, by 0 or 1 with equal chance.
+    Add Gaussian noise or salt-and-pepper noise to a grayscale image in [0, 1].
+
+    `kind` is "gaussian" or "salt-and-pepper". Gaussian noise has standard
+    deviation `std` and is clipped to [0, 1]. Salt-and-pepper replaces each
+    pixel, with probability `fraction`, by 0 or 1 with equal chance.
     """
     clean = _as_image(image, "image")
-    fraction = _as_fraction(fraction)
     _as_generator(rng)
-    picked = rng.random(clean.shape) < fraction
+    name = _as_noise_kind(kind)
+    if name == "gaussian":
+        scale = _as_nonnegative(std, "std")
+        return np.clip(clean + rng.normal(scale=scale, size=clean.shape), 0.0, 1.0)
+    amount = _as_fraction(fraction)
+    picked = rng.random(clean.shape) < amount
     salt = rng.random(clean.shape) < 0.5
     noisy = clean.copy()
     noisy[picked] = salt[picked].astype(float)
@@ -72,6 +80,25 @@ def _as_image(array, name):
     if not np.all(np.isfinite(values)):
         raise ValueError(f"{name} must contain only finite values")
     return values
+
+
+def _as_noise_kind(kind):
+    if not isinstance(kind, str):
+        raise ValueError("kind must be 'gaussian' or 'salt-and-pepper'")
+    name = kind.strip().lower()
+    if name not in ("gaussian", "salt-and-pepper"):
+        raise ValueError("kind must be 'gaussian' or 'salt-and-pepper'")
+    return name
+
+
+def _as_nonnegative(value, name):
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a finite number >= 0") from exc
+    if not np.isfinite(number) or number < 0.0:
+        raise ValueError(f"{name} must be a finite number >= 0")
+    return number
 
 
 def _as_fraction(value):

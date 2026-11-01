@@ -15,25 +15,23 @@ DIAGONAL_ELEVATION = 16
 DIAGONAL_AZIMUTH = -160
 DIAGONAL_VERTICAL = "y"
 
-def make_comparison_figure(points, clean, noisy, denoised_by_lam):
+def make_comparison_figure(points, clean, noisy, rof, tvl1, lam_rof, lam_tvl1):
     """
-    Build a 3D comparison painted with the color at each point.
-
-    `denoised_by_lam` is a list of `(lam, colors)` in the order large, moderate, small.
-    Every panel uses the same axis box.
+    Build one row: clean, noisy, ROF, and TV-L1. Every panel uses the same box.
     """
     cloud = np.asarray(points, dtype=float)
-    panels = [("clean", clean), ("noisy", noisy)]
-    panels.extend([(f"λ = {lam:g}", colors) for lam, colors in denoised_by_lam])
+    panels = [
+        ("clean", clean),
+        ("noisy", noisy),
+        (f"ROF, λ = {lam_rof:g}", rof),
+        (f"TV-L1, λ = {lam_tvl1:g}", tvl1),
+    ]
     low = cloud.min(axis=0)
     high = cloud.max(axis=0)
     center = (low + high) / 2.0
     half = float(np.max(high - low) / 2.0 * 1.05)
-    fig = plt.figure(figsize=(14, 8))
-    grid = fig.add_gridspec(2, 3)
-    slots = [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1)]
-    for (row, col), (title, colors) in zip(slots, panels):
-        axis = fig.add_subplot(grid[row, col], projection="3d")
+    fig, axes = plt.subplots(1, 4, figsize=(14, 4.2), subplot_kw={"projection": "3d"})
+    for axis, (title, colors) in zip(axes, panels):
         axis.scatter(
             cloud[:, 0],
             cloud[:, 1],
@@ -42,15 +40,10 @@ def make_comparison_figure(points, clean, noisy, denoised_by_lam):
             s=8,
             depthshade=False,
         )
-        _style_axis(axis, title, center, half)
-    notes = fig.add_subplot(grid[1, 2])
-    notes.set_axis_off()
-    notes.set_title("color, points fixed")
-    note_lines = []
-    for title, colors in panels:
-        note_lines.append(f"{title}\n  color mse {color_mse(colors, clean):.3e}")
-    notes.text(0.0, 1.0, "\n".join(note_lines), va="top", family="monospace", fontsize=9)
-    fig.suptitle("exp_color: ROF denoising of the color on Spot")
+        mse = color_mse(colors, clean)
+        _style_axis(axis, f"{title}\nmse = {mse:.2e}", center, half)
+    fig.suptitle("exp_color: ROF and TV-L1 on Spot")
+    fig.tight_layout()
     return fig
 
 

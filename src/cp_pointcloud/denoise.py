@@ -3,9 +3,12 @@ Primal-dual total variation on a symmetric k-nearest-neighbor graph.
 
 The energy is equation (14) of Tenbrinck, Lozes, and Elmoataz (SSVM 2015),
 with the isotropic seminorm (7) at p = 2. The iteration is their equation (20),
-which is Algorithm 1 of Chambolle and Pock (2011). Each coordinate is a scalar
-signal. The neighborhood is symmetric. The default edge weight is 1, and
-weight="distance" uses a Gaussian of the Euclidean edge length.
+which is Algorithm 1 of Chambolle and Pock (2011), run by `cp_solver.chambolle_pock`.
+This module supplies what is specific to a graph: K is the weighted edge
+difference, its adjoint, the projection onto the vertex balls, and the bound on
+||K||. Each coordinate is a scalar signal. The neighborhood is symmetric. The
+default edge weight is 1, and weight="distance" uses a Gaussian of the
+Euclidean edge length.
 
 data="l1" replaces the quadratic data term of (14) with lam * ||u - f||_1,
 the TV-L1 model of Chambolle and Pock (2011). Only the primal prox changes.
@@ -14,9 +17,8 @@ the TV-L1 model of Chambolle and Pock (2011). Only the primal prox changes.
 import numpy as np
 from scipy.spatial import cKDTree
 
-# tau * sigma * ||K||^2 = STEP_FRACTION**2 < 1.
-STEP_FRACTION = 0.99
-RELATIVE_CHANGE_TOL = 1e-5
+from cp_solver import RELATIVE_CHANGE_TOL, chambolle_pock
+from cp_solver.prox import prox_l1_data, prox_quadratic_data
 
 #--------------------------------------------------------------------------------
 
@@ -32,7 +34,7 @@ def denoise_point_cloud(
     """
     cloud = _as_matrix(points, "points")
     sources, targets, weights = knn_graph(cloud, k, weight=weight, bandwidth=bandwidth)
-    return chambolle_pock(
+    return denoise_graph_signal(
         cloud, sources, targets, weights, lam, n_iter=n_iter, theta=theta, tol=tol
     )
 
@@ -165,7 +167,7 @@ def operator_norm_bound(sources, targets, weights, n_vertices):
 #--------------------------------------------------------------------------------
 
 
-def chambolle_pock(
+def denoise_graph_signal(
     signal,
     sources,
     targets,
@@ -177,64 +179,34 @@ def chambolle_pock(
     data="l2",
 ):
     """
-    Minimize equation (14) by the iteration (20), one scalar channel at a time.
+    Minimize equation (14) on the given graph, one scalar channel at a time.
 
     `data` is "l2" for the quadratic data term of (14), or "l1" for the
     TV-L1 data term lam * ||u - f||_1.
     """
     observed, squeeze = _as_signal(signal)
-    sources, targets, weights = _as_edges(sources, targets, weights, observed.shape[0])
+    n_vertices = observed.shape[0]
+    sources, targets, weights = _as_edges(sources, targets, weights, n_vertices)
     lam = _as_nonnegative(lam, "lam")
-    n_iter = _as_positive_int(n_iter, "n_iter")
-    theta = _as_theta(theta)
-    tol = _as_positive(tol, "tol")
-    data = _as_data(data)
-    restored = np.empty_like(observed)
-    for channel in range(observed.shape[1]):
-        restored[:, channel] = _solve_scalar(
-            observed[:, channel], sources, targets, weights, lam, n_iter, theta, tol, data
-        )
+    prox_data = _data_prox(data)
+    bound = operator_norm_bound(sources, targets, weights, n_vertices)
+    restored = observed.copy()
+    if bound > 0.0:
+        for channel in range(observed.shape[1]):
+            restored[:, channel] = chambolle_pock(
+                observed[:, channel],
+                K=lambda x: apply_gradient(x, sources, targets, weights),
+                K_adjoint=lambda y: apply_adjoint(y, sources, targets, weights, n_vertices),
+                prox_f_conj=lambda y, _sigma: y * _unit_ball_scale(y, sources, n_vertices),
+                prox_g=lambda x, tau, f=observed[:, channel]: prox_data(x, f, tau * lam),
+                norm_K=bound,
+                n_iter=n_iter,
+                theta=theta,
+                tol=tol,
+            )
     if squeeze:
         return restored[:, 0]
     return restored
-
-
-def _solve_scalar(observed, sources, targets, weights, lam, n_iter, theta, tol, data):
-    """
-    Run equation (20) for one scalar channel.
-    """
-    n_vertices = observed.shape[0]
-    if sources.shape[0] == 0:
-        return observed.copy()
-    bound = operator_norm_bound(sources, targets, weights, n_vertices)
-    if bound == 0.0:
-        return observed.copy()
-    # Set both steps so that tau * sigma * ||K||^2 < 1.
-    tau = STEP_FRACTION / bound
-    sigma = STEP_FRACTION / bound
-    primal = observed.copy()
-    extrapolated = observed.copy()
-    dual = np.zeros(sources.shape[0])
-    for _ in range(n_iter):
-        # Ascend the dual variable and project onto each vertex ball of radius 1.
-        previous_dual = dual
-        dual = dual + sigma * apply_gradient(extrapolated, sources, targets, weights)
-        dual *= _unit_ball_scale(dual, sources, n_vertices)
-        # Descend the primal variable with the prox of the data term.
-        adjoint = apply_adjoint(dual, sources, targets, weights, n_vertices)
-        previous = primal
-        primal = _data_prox(primal - tau * adjoint, observed, tau * lam, data)
-        extrapolated = primal + theta * (primal - previous)
-        # Stop once both variables settle. The l1 prox can hold the primal
-        # exactly at the data while the dual is still moving.
-        if _has_settled(primal, previous, tol) and _has_settled(dual, previous_dual, tol):
-            break
-    return primal
-
-
-def _has_settled(current, previous, tol):
-    # Relative change. A variable that stays at 0 has settled.
-    return np.linalg.norm(current - previous) <= tol * np.linalg.norm(previous)
 
 
 def _unit_ball_scale(dual, sources, n_vertices):
@@ -247,15 +219,10 @@ def _unit_ball_scale(dual, sources, n_vertices):
     return scale[sources]
 
 
-def _data_prox(point, observed, step, data):
-    """
-    Prox of step * (data term) at `point`, as in equation (20).
-    """
-    if data == "l2":
-        return (point + step * observed) / (1.0 + step)
-    # Soft-threshold the residual: the prox of step * |u - f| per vertex.
-    residual = point - observed
-    return observed + np.sign(residual) * np.maximum(np.abs(residual) - step, 0.0)
+def _data_prox(data):
+    if not isinstance(data, str) or data.strip().lower() not in ("l2", "l1"):
+        raise ValueError("data must be 'l2' or 'l1'")
+    return prox_quadratic_data if data.strip().lower() == "l2" else prox_l1_data
 
 
 #--------------------------------------------------------------------------------
@@ -326,29 +293,3 @@ def _as_nonnegative(value, name):
     if not np.isfinite(number) or number < 0:
         raise ValueError(f"{name} must be a finite number >= 0")
     return number
-
-
-def _as_positive(value, name):
-    try:
-        number = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{name} must be a finite number > 0") from exc
-    if not np.isfinite(number) or number <= 0:
-        raise ValueError(f"{name} must be a finite number > 0")
-    return number
-
-
-def _as_theta(value):
-    try:
-        number = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("theta must lie in [0, 1]") from exc
-    if not np.isfinite(number) or number < 0.0 or number > 1.0:
-        raise ValueError("theta must lie in [0, 1]")
-    return number
-
-
-def _as_data(value):
-    if not isinstance(value, str) or value.strip().lower() not in ("l2", "l1"):
-        raise ValueError("data must be 'l2' or 'l1'")
-    return value.strip().lower()

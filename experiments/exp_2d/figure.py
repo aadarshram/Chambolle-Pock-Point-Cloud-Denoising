@@ -4,7 +4,7 @@ Draw the clean, noisy, TV-L1, and ROF images side by side.
 
 import matplotlib.pyplot as plt
 
-from experiments.exp_tvl1.image import image_mse
+from experiments.exp_2d.image import image_mse
 
 
 def make_comparison_figure(clean, noisy, panels):
