@@ -2,9 +2,9 @@
 The Chambolle-Pock primal-dual iteration, Algorithm 1 of Chambolle and Pock
 (2011), for min_x F(Kx) + G(x).
 
-Nothing here depends on the problem. The caller supplies the linear operator
-K, its adjoint, the proximal maps of F* and G, and a bound on ||K||. Arrays
-may have any shape. The dual variable takes the shape of K x.
+The caller inputs K, adjoint, proximal maps of F* and G, and a bound on ||K||. The algorithm is implemented agnostic of the problem.
+
+Note: We only implement the general version with 0 < theta < 1. Specialized accelerated versions (where the step sizes can also be adapted per iteration for faster convergence; in cases when either or both F and G are uniformly convex; see paper) are not implemented.
 """
 
 import numpy as np
@@ -14,7 +14,6 @@ STEP_FRACTION = 0.99
 RELATIVE_CHANGE_TOL = 1e-5
 
 #--------------------------------------------------------------------------------
-
 
 def chambolle_pock(
     x0,
@@ -54,6 +53,7 @@ def chambolle_pock(
     n_iter = _as_positive_int(n_iter, "n_iter")
     theta = _as_theta(theta)
     tol = _as_positive(tol, "tol")
+
     tau = STEP_FRACTION / norm_K
     sigma = STEP_FRACTION / norm_K
     extrapolated = primal.copy()
@@ -68,19 +68,15 @@ def chambolle_pock(
             break
     return primal
 
-
 #--------------------------------------------------------------------------------
-
 
 def _has_settled(current, previous, tol):
     # Relative change. A variable that stays at 0 has settled.
     return np.linalg.norm(current - previous) <= tol * np.linalg.norm(previous)
 
-
 def _as_callable(value, name):
     if not callable(value):
         raise ValueError(f"{name} must be callable")
-
 
 def _as_positive_int(value, name):
     if isinstance(value, (bool, np.bool_)):
@@ -93,7 +89,6 @@ def _as_positive_int(value, name):
         raise ValueError(f"{name} must be an integer >= 1")
     return number
 
-
 def _as_positive(value, name):
     try:
         number = float(value)
@@ -102,8 +97,7 @@ def _as_positive(value, name):
     if not np.isfinite(number) or number <= 0:
         raise ValueError(f"{name} must be a finite number > 0")
     return number
-
-
+    
 def _as_theta(value):
     try:
         number = float(value)

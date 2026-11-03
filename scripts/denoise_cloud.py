@@ -10,7 +10,6 @@ import numpy as np
 from cp_pointcloud import denoise_point_cloud
 from cp_pointcloud.denoise import RELATIVE_CHANGE_TOL
 
-
 def main():
     parser = argparse.ArgumentParser(
         description=(

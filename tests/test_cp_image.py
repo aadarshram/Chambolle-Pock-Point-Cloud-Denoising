@@ -8,14 +8,7 @@ from cp_image import (
     denoise_image,
     gradient,
     gradient_adjoint,
-    tvl1_energy,
 )
-
-# A single pixel of height h on a flat image costs (2 + sqrt(2)) * h in total
-# variation and lam * h in the data term to remove, so TV-L1 removes it
-# exactly when lam < 2 + sqrt(2).
-SPIKE_THRESHOLD = 2.0 + np.sqrt(2.0)
-
 
 def _spike(size=7):
     image = np.zeros((size, size))
@@ -68,12 +61,6 @@ def test_norm_bound_is_the_paper_bound_and_covers_power_iteration():
     assert OPERATOR_NORM_BOUND >= np.sqrt(scale) - 1e-6
 
 
-def test_energy_of_a_spike_matches_the_threshold():
-    spike = _spike()
-    assert tvl1_energy(spike, spike, lam=1.0) == pytest.approx(SPIKE_THRESHOLD)
-    assert tvl1_energy(spike, np.zeros_like(spike), lam=2.0) == pytest.approx(2.0)
-
-
 @pytest.mark.parametrize("lam", [2.0, 3.0])
 def test_spike_below_the_threshold_is_removed(lam):
     restored = denoise_image(_spike(), lam, n_iter=20000, tol=1e-10)
@@ -86,13 +73,12 @@ def test_spike_above_the_threshold_is_kept(lam):
     assert restored == pytest.approx(_spike(), abs=1e-4)
 
 
-def test_salt_and_pepper_error_and_energy_drop():
+def test_salt_and_pepper_error_drops():
     clean, noisy = _salt_and_pepper_square()
     restored = denoise_image(noisy, lam=1.0, n_iter=5000, tol=1e-8)
     noisy_mse = np.mean((noisy - clean) ** 2)
     restored_mse = np.mean((restored - clean) ** 2)
     assert restored_mse < 0.1 * noisy_mse
-    assert tvl1_energy(noisy, restored, 1.0) <= tvl1_energy(noisy, noisy, 1.0)
 
 
 def test_rof_preserves_the_mean_and_smooths():
@@ -127,8 +113,3 @@ def test_single_pixel_image_is_returned_unchanged():
 def test_bad_image_input_raises(image, kwargs):
     with pytest.raises(ValueError):
         denoise_image(image, **kwargs)
-
-
-def test_energy_shape_mismatch_raises():
-    with pytest.raises(ValueError):
-        tvl1_energy(np.zeros((2, 2)), np.zeros((2, 3)), lam=1.0)

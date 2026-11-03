@@ -6,7 +6,6 @@ from cp_image.denoise import (
     gradient,
     gradient_adjoint,
     total_variation,
-    tvl1_energy,
 )
 
 __all__ = [
@@ -15,5 +14,4 @@ __all__ = [
     "gradient",
     "gradient_adjoint",
     "total_variation",
-    "tvl1_energy",
 ]

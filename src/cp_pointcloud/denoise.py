@@ -1,27 +1,25 @@
 """
-Primal-dual total variation on a symmetric k-nearest-neighbor graph.
+Extension of the Chambolle-Pock method for 2D image denoising to color denoising in 3D point clouds.
 
-The energy is equation (14) of Tenbrinck, Lozes, and Elmoataz (SSVM 2015),
-with the isotropic seminorm (7) at p = 2. The iteration is their equation (20),
-which is Algorithm 1 of Chambolle and Pock (2011), run by `cp_solver.chambolle_pock`.
-This module supplies what is specific to a graph: K is the weighted edge
-difference, its adjoint, the projection onto the vertex balls, and the bound on
-||K||. Each coordinate is a scalar signal. The neighborhood is symmetric. The
-default edge weight is 1, and weight="distance" uses a Gaussian of the
-Euclidean edge length.
+We first define the point cloud as a symmetric k-nearest-neighbor graph. This establishes the ordering structure to construct the gradient operator.
+K = grad is the weighted edge difference. sqrt(w) * (signal[target] - signal[source]) where the signal[] are the color values at the vertices.
 
-data="l1" replaces the quadratic data term of (14) with lam * ||u - f||_1,
-the TV-L1 model of Chambolle and Pock (2011). Only the primal prox changes.
+The gradient norm first finds L2 norm over all edges. The isotropic total variation is then the sum over all vertices of the Euclidean norm of the gradients.
+
+The weight for the edges can be set to be equal or a function of the distance between the vertices. The latter helps in smoothing the point cloud by giving more weight to closer neighbors but for smaller patches it doesn't make much difference.
+
+Each color channel is denoised independently.
+
+Note: Essentially, in the Chambolle-Pock method, only the operator K is changed. Remaining follows exactly as that of 2D image denoising.
 """
 
 import numpy as np
-from scipy.spatial import cKDTree
+from scipy.spatial import cKDTree # for k-nearest-neighbor graph
 
 from cp_solver import RELATIVE_CHANGE_TOL, chambolle_pock
 from cp_solver.prox import prox_l1_data, prox_quadratic_data
 
 #--------------------------------------------------------------------------------
-
 
 def denoise_point_cloud(
     points, k, lam, n_iter=5000, theta=1.0, tol=RELATIVE_CHANGE_TOL, weight="equal", bandwidth=None
@@ -29,15 +27,15 @@ def denoise_point_cloud(
     """
     Denoise each coordinate on the symmetric k-nearest-neighbor graph of `points`.
 
-    Solves equation (14) independently for every column. `lam` multiplies the data term.
+    Solves the denoising problem for each color channel independently. `lam` multiplies the data term.
     `weight` is "equal" or "distance", as in `knn_graph`.
     """
     cloud = _as_matrix(points, "points")
+
     sources, targets, weights = knn_graph(cloud, k, weight=weight, bandwidth=bandwidth)
     return denoise_graph_signal(
         cloud, sources, targets, weights, lam, n_iter=n_iter, theta=theta, tol=tol
     )
-
 
 def knn_graph(points, k, weight="equal", bandwidth=None):
     """
@@ -48,9 +46,10 @@ def knn_graph(points, k, weight="equal", bandwidth=None):
     `weight="distance"` sets w_ij = exp(-||x_i - x_j||^2 / h^2). `h` is
     `bandwidth`, or the median positive edge length when `bandwidth` is omitted.
     """
+
     def edge_weights(sources, targets):
         if not isinstance(weight, str) or weight.strip().lower() not in ("equal", "distance"):
-            raise ValueError("weight must be 'equal' or 'distance'")
+            raise ValueError("weight must be 'equal' or 'distance'") 
         kind = weight.strip().lower()
         if kind == "equal":
             if bandwidth is not None:
@@ -78,6 +77,7 @@ def knn_graph(points, k, weight="equal", bandwidth=None):
     n = cloud.shape[0]
     if k >= n:
         raise ValueError("k must be smaller than the number of points")
+
     # Drop the point itself from the neighbor query.
     _distances, neighbors = cKDTree(cloud).query(cloud, k=k + 1)
     is_self = neighbors == np.arange(n)[:, None]
@@ -98,13 +98,11 @@ def knn_graph(points, k, weight="equal", bandwidth=None):
     weights = edge_weights(sources, targets)
     return sources.astype(int, copy=False), targets.astype(int, copy=False), weights
 
-
 #--------------------------------------------------------------------------------
-
 
 def apply_gradient(signal, sources, targets, weights):
     """
-    Weighted differences sqrt(w) * (signal[target] - signal[source]), equation (3).
+    Weighted differences sqrt(w) * (signal[target] - signal[source]).
     """
     values = np.asarray(signal, dtype=float)
     sqrt_w = np.sqrt(weights)
@@ -112,10 +110,11 @@ def apply_gradient(signal, sources, targets, weights):
         return sqrt_w * (values[targets] - values[sources])
     return sqrt_w[:, None] * (values[targets] - values[sources])
 
-
 def apply_adjoint(dual, sources, targets, weights, n_vertices):
     """
-    Adjoint of `apply_gradient`, equation (4).
+    Adjoint of `apply_gradient`.
+    Sketch:
+    For graph, adjoint of the edge gradient is the edge sum of the dual. The dual variable is the projection onto [-1, 1].
     """
     values = np.asarray(dual, dtype=float)
     sqrt_w = np.sqrt(weights)
@@ -132,7 +131,7 @@ def apply_adjoint(dual, sources, targets, weights, n_vertices):
 
 def total_variation(signal, sources, targets, weights):
     """
-    Isotropic vertex total variation, equation (7) with p = 2.
+    Isotropic vertex total variation.
 
     Channels are summed separately. The norm at each vertex stacks the
     weighted jumps along outgoing edges.
@@ -149,12 +148,13 @@ def total_variation(signal, sources, targets, weights):
         total += float(np.sum(np.sqrt(squared)))
     return total
 
-
 def operator_norm_bound(sources, targets, weights, n_vertices):
     """
-    Upper bound 2 * sqrt(max outgoing weight) on ||K||.
+    Sketch:
+    Using the formula for the operator norm and the fact that this is a symmetric undirected graph, a sufficient uppr bound can be found.
 
-    For a symmetric weight this is ||K||^2 <= 4 * max_i sum_{j ~ i} w_ij.
+    Upper bound 2 * sqrt(max outgoing weight) on ||K||.
+    ||K||^2 <= 4 * max_i sum_{j ~ i} w_ij.
     """
     outgoing = np.zeros(n_vertices)
     np.add.at(outgoing, np.asarray(sources, dtype=int), weights)
@@ -163,9 +163,7 @@ def operator_norm_bound(sources, targets, weights, n_vertices):
         return 0.0
     return float(np.sqrt(4.0 * maximum))
 
-
 #--------------------------------------------------------------------------------
-
 
 def denoise_graph_signal(
     signal,
@@ -179,10 +177,9 @@ def denoise_graph_signal(
     data="l2",
 ):
     """
-    Minimize equation (14) on the given graph, one scalar channel at a time.
+    Minimize the denoising problem on the given graph, one scalar channel at a time.
 
-    `data` is "l2" for the quadratic data term of (14), or "l1" for the
-    TV-L1 data term lam * ||u - f||_1.
+    `data` is "l2" for the quadratic data term, or "l1" for the TV-L1 data term.
     """
     observed, squeeze = _as_signal(signal)
     n_vertices = observed.shape[0]
@@ -191,6 +188,7 @@ def denoise_graph_signal(
     prox_data = _data_prox(data)
     bound = operator_norm_bound(sources, targets, weights, n_vertices)
     restored = observed.copy()
+
     if bound > 0.0:
         for channel in range(observed.shape[1]):
             restored[:, channel] = chambolle_pock(
@@ -208,7 +206,6 @@ def denoise_graph_signal(
         return restored[:, 0]
     return restored
 
-
 def _unit_ball_scale(dual, sources, n_vertices):
     squared = np.zeros(n_vertices)
     np.add.at(squared, sources, dual**2)
@@ -218,15 +215,12 @@ def _unit_ball_scale(dual, sources, n_vertices):
     scale[outside] = 1.0 / norms[outside]
     return scale[sources]
 
-
 def _data_prox(data):
     if not isinstance(data, str) or data.strip().lower() not in ("l2", "l1"):
         raise ValueError("data must be 'l2' or 'l1'")
     return prox_quadratic_data if data.strip().lower() == "l2" else prox_l1_data
 
-
 #--------------------------------------------------------------------------------
-
 
 def _as_matrix(array, name):
     values = np.asarray(array, dtype=float)
@@ -235,7 +229,6 @@ def _as_matrix(array, name):
     if not np.all(np.isfinite(values)):
         raise ValueError(f"{name} must contain only finite values")
     return values
-
 
 def _as_signal(array):
     values = np.asarray(array, dtype=float)
@@ -247,7 +240,6 @@ def _as_signal(array):
     if not np.all(np.isfinite(values)):
         raise ValueError("signal must contain only finite values")
     return values, squeeze
-
 
 def _as_edges(sources, targets, weights, n_vertices):
     sources = np.asarray(sources)
@@ -272,7 +264,6 @@ def _as_edges(sources, targets, weights, n_vertices):
         raise ValueError("weights must be finite and non-negative")
     return sources, targets, weights
 
-
 def _as_positive_int(value, name):
     if isinstance(value, bool) or isinstance(value, np.bool_):
         raise ValueError(f"{name} must be an integer >= 1")
@@ -283,7 +274,6 @@ def _as_positive_int(value, name):
     if number != value or number < 1:
         raise ValueError(f"{name} must be an integer >= 1")
     return number
-
 
 def _as_nonnegative(value, name):
     try:

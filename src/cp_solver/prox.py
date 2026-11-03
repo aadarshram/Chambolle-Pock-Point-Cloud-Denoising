@@ -1,12 +1,8 @@
 """
-Proximal maps of the two data terms used in the experiments.
-
-Both act on every entry separately, so they do not depend on the shape of the
-signal or on K. `step` is tau * lam.
+Proximal maps of the two data terms used in the experiments. L1 and L2.
 """
 
 import numpy as np
-
 
 def prox_quadratic_data(point, observed, step):
     """
